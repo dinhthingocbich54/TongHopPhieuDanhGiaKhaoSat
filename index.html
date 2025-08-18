@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="vi" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Phân Tích Chi Tiết</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideInUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes toastFadeIn {
+            from { opacity: 0; transform: translateY(20px) translateX(-50%); }
+            to { opacity: 1; transform: translateY(0) translateX(-50%); }
+        }
+        @keyframes pulse-once {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+            100% { transform: scale(1); }
+        }
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-color: #1a202c;
+            --primary-color: #4f46e5;
+            --secondary-color: #e2e8f0;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+        html.dark {
+            --bg-color: #111827;
+            --card-bg: #1f2937;
+            --text-color: #e5e7eb;
+            --primary-color: #818cf8;
+            --secondary-color: #374151;
+            --shadow-color: rgba(255, 255, 255, 0.05);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.5s, color 0.5s;
+            min-height: 100vh;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        .dashboard-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px var(--shadow-color);
+            padding: 1.5rem;
+            transition: transform 0.3s, box-shadow 0.3s, background-color 0.5s;
+            animation: fadeIn 0.8s ease-out forwards;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -2px var(--shadow-color);
+        }
+        .tag-filter {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            transition: all 0.3s;
+            font-weight: 500;
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+        .tag-filter:hover {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border-color: var(--primary-color);
+            transform: scale(1.05);
+        }
+        .tag-filter.active {
+            background-color: var(--primary-color);
+            color: #ffffff;
+            border-color: var(--primary-color);
+        }
+        .table-sort-header {
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.3s, transform 0.2s;
+        }
+        .table-sort-header:hover {
+            color: var(--primary-color);
+            transform: translateY(-2px);
+        }
+        .dark-mode-toggle {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 3rem;
+            height: 3rem;
+            background-color: var(--primary-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px var(--shadow-color);
+            transition: background-color 0.3s, transform 0.2s;
+            z-index: 999;
+        }
+        .dark-mode-toggle:hover {
+            transform: scale(1.1) rotate(15deg);
+        }
+        .loading-spinner {
+            height: 50vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading-spinner > div {
+            width: 4rem;
+            height: 4rem;
+            border-width: 4px;
+            border-color: var(--primary-color);
+            border-style: solid;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spinner 1s linear infinite;
+        }
+        @keyframes spinner {
+            to { transform: rotate(360deg); }
+        }
+        .toast-notification {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #22c55e;
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            z-index: 1000;
+            animation: toastFadeIn 0.5s forwards;
+        }
+        .toast-notification.hide {
+            animation: toastFadeIn 0.5s reverse forwards;
+        }
+        .chart-toggle-btn.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .chart-toggle-btn:not(.active) {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+        }
+        .overflow-x-auto::-webkit-scrollbar {
+            height: 8px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 10px;
+        }
+        .overflow-x-auto::-webkit-scrollbar-track {
+            background-color: var(--secondary-color);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script>
+        const allCriteriaData = [
+            {"Tiêu chí":"Phòng đọc của thư viện đáp ứng yêu cầu về diện tích, chỗ ngồi.","Hoàn toàn đồng ý":2572,"Đồng ý":2895,"Phân vân":561,"Không đồng ý":200,"Hoàn toàn không đồng ý":85},
+            {"Tiêu chí":"Phòng đọc của thư viện đảm bảo thoáng mát, sạch sẽ, đủ ánh sáng","Hoàn toàn đồng ý":2655,"Đồng ý":3020,"Phân vân":431,"Không đồng ý":103,"Hoàn toàn không đồng ý":72},
+            {"Tiêu chí":"Học liệu được sắp xếp khoa học, dễ tìm kiếm","Hoàn toàn đồng ý":2425,"Đồng ý":3198,"Phân vân":526,"Không đồng ý":70,"Hoàn toàn không đồng ý":56},
+            {"Tiêu chí":"Học liệu bắt buộc của các học phần có đầy đủ trong thư viện","Hoàn toàn đồng ý":2425,"Đồng ý":3198,"Phân vân":526,"Không đồng ý":70,"Hoàn toàn không đồng ý":56},
+            {"Tiêu chí":"Học liệu tham khảo bằng tiếng Việt phong phú, đáp ứng yêu cầu học tập và nghiên cứu","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Học liệu tham khảo bằng tiếng nước ngoài phong phú, đáp ứng yêu cầu học tập và nghiên cứu","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Tài liệu điện tử của thư viện đáp ứng nhu cầu sử dụng","Hoàn toàn đồng ý":2601,"Đồng ý":3105,"Phân vân":465,"Không đồng ý":113,"Hoàn toàn không đồng ý":69},
+            {"Tiêu chí":"Hướng dẫn sử dụng của thư viện rõ ràng và đầy đủ","Hoàn toàn đồng ý":2601,"Đồng ý":3105,"Phân vân":465,"Không đồng ý":113,"Hoàn toàn không đồng ý":69},
+            {"Tiêu chí":"Cán bộ, nhân viên thư viện có thái độ phục vụ tốt","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Cán bộ, nhân viên thư viện hỗ trợ bạn đọc hiệu quả","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Hệ hống phòng học, giảng đường, các phòng chức năng của trường hiện đại, đáp ứng đầy đủ cho hoạt động học tập của người học","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Các khu sinh hoạt động thể thao, văn hóa (diện tích, âm thanh, ánh sáng, nhiệt độ, vệ sinh) ở trường đạt yêu cầu.","Hoàn toàn đồng ý":2502,"Đồng ý":3197,"Phân vân":521,"Không đồng ý":66,"Hoàn toàn không đồng ý":53},
+            {"Tiêu chí":"Hệ thống công nghệ thông tin (hệ thống máy tính, mạng internet…) đáp ứng đủ nhu cầu sử dụng của người học","Hoàn toàn đồng ý":2381,"Đồng ý":3139,"Phân vân":606,"Không đồng ý":130,"Hoàn toàn không đồng ý":83},
+            {"Tiêu chí":"Môi trường tự nhiên (không khí, cây xanh, cảnh quan…) ở trường sạch sẽ, hiện đại, phù hợp với nhu cầu của người học","Hoàn toàn đồng ý":2458,"Đồng ý":3066,"Phân vân":612,"Không đồng ý":122,"Hoàn toàn không đồng ý":78},
+            {"Tiêu chí":"Tình trạng an ninh, an toàn ở trường và khu vực xung quanh trường đảm bảo.","Hoàn toàn đồng ý":2382,"Đồng ý":3284,"Phân vân":514,"Không đồng ý":98,"Hoàn toàn không đồng ý":61},
+            {"Tiêu chí":"Việc xét duyệt người học vào ký túc xá đảm bảo công bằng","Hoàn toàn đồng ý":2449,"Đồng ý":3120,"Phân vân":518,"Không đồng ý":88,"Hoàn toàn không đồng ý":55},
+            {"Tiêu chí":"Anh/chị hài lòng về chất lượng phòng của ký túc xá","Hoàn toàn đồng ý":2462,"Đồng ý":3161,"Phân vân":496,"Không đồng ý":68,"Hoàn toàn không đồng ý":56},
+            {"Tiêu chí":"Hoạt động hỗ trợ người học ở ký túc xá được thực hiện hiệu quả","Hoàn toàn đồng ý":2483,"Đồng ý":3154,"Phân vân":481,"Không đồng ý":67,"Hoàn toàn không đồng ý":52},
+            {"Tiêu chí":"Cán bộ phụ trách công tác người học của Trường/Khoa trực thuộc thân thiện, chuyên nghiệp","Hoàn toàn đồng ý":2584,"Đồng ý":3071,"Phân vân":479,"Không đồng ý":86,"Hoàn toàn không đồng ý":58},
+            {"Tiêu chí":"Cán bộ phụ trách công tác đào tạo của Trường/Khoa trực thuộc thân thiện, chuyên nghiệp","Hoàn toàn đồng ý":2534,"Đồng ý":3080,"Phân vân":483,"Không đồng ý":92,"Hoàn toàn không đồng ý":57},
+            {"Tiêu chí":"Cán bộ phụ trách hỗ trợ đào tạo và công tác người học của Khoa thân thiện, chuyên nghiệp","Hoàn toàn đồng ý":2549,"Đồng ý":3095,"Phân vân":460,"Không đồng ý":75,"Hoàn toàn không đồng ý":51},
+            {"Tiêu chí":"Người học được khen thưởng kịp thời và thỏa đáng","Hoàn toàn đồng ý":2425,"Đồng ý":3198,"Phân vân":526,"Không đồng ý":70,"Hoàn toàn không đồng ý":56},
+            {"Tiêu chí":"Người học tiếp cận dễ dàng, kịp thời thông tin về học bổng","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Việc xét duyệt cấp học bổng được thực hiện công bằng","Hoàn toàn đồng ý":2481,"Đồng ý":3221,"Phân vân":464,"Không đồng ý":63,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Hoạt động hướng nghiệp và hỗ trợ việc làm cho người học được tổ chức hiệu quả","Hoàn toàn đồng ý":2465,"Đồng ý":3170,"Phân vân":514,"Không đồng ý":76,"Hoàn toàn không đồng ý":52},
+            {"Tiêu chí":"Hoạt động của các câu lạc bộ của người học được tổ chức đa dạng, phong phú","Hoàn toàn đồng ý":2516,"Đồng ý":3169,"Phân vân":455,"Không đồng ý":66,"Hoàn toàn không đồng ý":49},
+            {"Tiêu chí":"Các hoạt động tình nguyện, cộng đồng được tổ chức hiệu quả","Hoàn toàn đồng ý":2515,"Đồng ý":3154,"Phân vân":479,"Không đồng ý":74,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Sự hỗ trợ từ các giảng viên, cán bộ quản lý về học tập, nghiên cứu khoa học","Hoàn toàn đồng ý":2500,"Đồng ý":3083,"Phân vân":527,"Không đồng ý":94,"Hoàn toàn không đồng ý":55},
+            {"Tiêu chí":"Sự hỗ trợ từ các giảng viên, cán bộ quản lý về định hướng nghề nghiệp","Hoàn toàn đồng ý":2476,"Đồng ý":3088,"Phân vân":535,"Không đồng ý":100,"Hoàn toàn không đồng ý":60},
+            {"Tiêu chí":"Các chương trình học tập, đào tạo đáp ứng nhu cầu phát triển của người học","Hoàn toàn đồng ý":2439,"Đồng ý":3187,"Phân vân":509,"Không đồng ý":78,"Hoàn toàn không đồng ý":48},
+            {"Tiêu chí":"Mục tiêu đào tạo của chương trình được truyền tải rõ ràng","Hoàn toàn đồng ý":2477,"Đồng ý":3171,"Phân vân":498,"Không đồng ý":75,"Hoàn toàn không đồng ý":40},
+            {"Tiêu chí":"Các học phần trong chương trình được thiết kế logic, khoa học","Hoàn toàn đồng ý":2513,"Đồng ý":3180,"Phân vân":472,"Không đồng ý":70,"Hoàn toàn không đồng ý":46},
+            {"Tiêu chí":"Khối lượng kiến thức của các học phần là phù hợp với thời gian","Hoàn toàn đồng ý":2499,"Đồng ý":3206,"Phân vân":458,"Không đồng ý":71,"Hoàn toàn không đồng ý":47},
+            {"Tiêu chí":"Giáo trình, tài liệu tham khảo cho các học phần đáp ứng nhu cầu học tập","Hoàn toàn đồng ý":2492,"Đồng ý":3193,"Phân vân":480,"Không đồng ý":74,"Hoàn toàn không đồng ý":42},
+            {"Tiêu chí":"Hình thức đánh giá học phần đa dạng, phù hợp với mục tiêu học tập","Hoàn toàn đồng ý":2504,"Đồng ý":3185,"Phân vân":468,"Không đồng ý":68,"Hoàn toàn không đồng ý":36},
+            {"Tiêu chí":"Hoạt động thực tế, thực hành, thực tập được tổ chức hiệu quả","Hoàn toàn đồng ý":2512,"Đồng ý":3202,"Phân vân":467,"Không đồng ý":72,"Hoàn toàn không đồng ý":40},
+            {"Tiêu chí":"Công tác quản lý đào tạo được thực hiện hiệu quả, chuyên nghiệp","Hoàn toàn đồng ý":2462,"Đồng ý":3120,"Phân vân":530,"Không đồng ý":92,"Hoàn toàn không đồng ý":45},
+            {"Tiêu chí":"Hoạt động nghiên cứu khoa học thúc đẩy kỹ năng nghề nghiệp cho người học","Hoàn toàn đồng ý":2425,"Đồng ý":3198,"Phân vân":526,"Không đồng ý":70,"Hoàn toàn không đồng ý":56},
+            {"Tiêu chí":"Phản hồi, khiếu nại của người học được Trường/Khoa giải quyết thỏa đáng","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Người học được tham gia đóng góp ý kiến với Trường/Khoa","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39},
+            {"Tiêu chí":"Người học có cơ hội học tập nâng cao năng lực chuyên môn.","Hoàn toàn đồng ý":2474,"Đồng ý":3237,"Phân vân":478,"Không đồng ý":61,"Hoàn toàn không đồng ý":39}
+        ];
+
+        const allDepartmentData = [
+            {"Khoa":"Công nghệ kỹ thuật ô tô","Số lượng phiếu":240,"Hoàn toàn đồng ý":5368,"Đồng ý":4149,"Phân vân":791,"Không đồng ý":78,"Hoàn toàn không đồng ý":132,"Tổng số":10518},
+            {"Khoa":"Công nghệ tài chính","Số lượng phiếu":15,"Hoàn toàn đồng ý":297,"Đồng ý":296,"Phân vân":27,"Không đồng ý":2,"Hoàn toàn không đồng ý":1,"Tổng số":625},
+            {"Khoa":"Công nghệ thông tin","Số lượng phiếu":1039,"Hoàn toàn đồng ý":19972,"Đồng ý":20412,"Phân vân":4271,"Không đồng ý":297,"Hoàn toàn không đồng ý":426,"Tổng số":45378},
+            {"Khoa":"Điều dưỡng","Số lượng phiếu":225,"Hoàn toàn đồng ý":3765,"Đồng ý":5060,"Phân vân":714,"Không đồng ý":142,"Hoàn toàn không đồng ý":94,"Tổng số":9775},
+            {"Khoa":"Dược học","Số lượng phiếu":286,"Hoàn toàn đồng ý":3405,"Đồng ý":8319,"Phân vân":525,"Không đồng ý":59,"Hoàn toàn không đồng ý":53,"Tổng số":12361},
+            {"Khoa":"Ngôn ngữ Hàn Quốc","Số lượng phiếu":507,"Hoàn toàn đồng ý":7330,"Đồng ý":12461,"Phân vân":1813,"Không đồng ý":274,"Hoàn toàn không đồng ý":134,"Tổng số":22012},
+            {"Khoa":"Hệ thống thông tin","Số lượng phiếu":3,"Hoàn toàn đồng ý":53,"Đồng ý":40,"Phân vân":17,"Không đồng ý":1,"Hoàn toàn không đồng ý":0,"Tổng số":131},
+            {"Khoa":"Kinh doanh Quốc tế","Số lượng phiếu":50,"Hoàn toàn đồng ý":620,"Đồng ý":853,"Phân vân":249,"Không đồng ý":182,"Hoàn toàn không đồng ý":209,"Tổng số":2113},
+            {"Khoa":"Khoa học máy tính","Số lượng phiếu":48,"Hoàn toàn đồng ý":1134,"Đồng ý":652,"Phân vân":269,"Không đồng ý":32,"Hoàn toàn không đồng ý":9,"Tổng số":2096},
+            {"Khoa":"Kế toán","Số lượng phiếu":359,"Hoàn toàn đồng ý":6156,"Đồng ý":8333,"Phân vân":917,"Không đồng ý":103,"Hoàn toàn không đồng ý":120,"Tổng số":15629},
+            {"Khoa":"Công nghệ kỹ thuật điện, điện tử","Số lượng phiếu":86,"Hoàn toàn đồng ý":2267,"Đồng ý":1391,"Phân vân":102,"Không đồng ý":2,"Hoàn toàn không đồng ý":1,"Tổng số":3763},
+            {"Khoa":"Kinh tế","Số lượng phiếu":19,"Hoàn toàn đồng ý":332,"Đồng ý":374,"Phân vân":89,"Không đồng ý":20,"Hoàn toàn không đồng ý":7,"Tổng số":822},
+            {"Khoa":"Kiến trúc","Số lượng phiếu":16,"Hoàn toàn đồng ý":215,"Đồng ý":366,"Phân vân":103,"Không đồng ý":13,"Hoàn toàn không đồng ý":1,"Tổng số":698},
+            {"Khoa":"Kinh tế số","Số lượng phiếu":42,"Hoàn toàn đồng ý":651,"Đồng ý":843,"Phân vân":253,"Không đồng ý":36,"Hoàn toàn không đồng ý":33,"Tổng số":1826},
+            {"Khoa":"Kinh tế xây dựng","Số lượng phiếu":13,"Hoàn toàn đồng ý":231,"Đồng ý":265,"Phân vân":63,"Không đồng ý":0,"Hoàn toàn không đồng ý":10,"Tổng số":569},
+            {"Khoa":"Luật Kinh tế","Số lượng phiếu":98,"Hoàn toàn đồng ý":1720,"Đồng ý":2136,"Phân vân":344,"Không đồng ý":55,"Hoàn toàn không đồng ý":28,"Tổng số":4290},
+            {"Khoa":"Logistics và Quản lý chuỗi cung ứng","Số lượng phiếu":84,"Hoàn toàn đồng ý":1763,"Đồng ý":1515,"Phân vân":271,"Không đồng ý":51,"Hoàn toàn không đồng ý":66,"Tổng số":3666},
+            {"Khoa":"Luật","Số lượng phiếu":42,"Hoàn toàn đồng ý":1019,"Đồng ý":690,"Phân vân":100,"Không đồng ý":3,"Hoàn toàn không đồng ý":18,"Tổng số":1830},
+            {"Khoa":"Marketing","Số lượng phiếu":219,"Hoàn toàn đồng ý":3410,"Đồng ý":5123,"Phân vân":784,"Không đồng ý":109,"Hoàn toàn không đồng ý":78,"Tổng số":9504},
+            {"Khoa":"Ngôn ngữ Nhật bản","Số lượng phiếu":20,"Hoàn toàn đồng ý":546,"Đồng ý":209,"Phân vân":106,"Không đồng ý":13,"Hoàn toàn không đồng ý":1,"Tổng số":874},
+            {"Khoa":"Quan hệ công chúng","Số lượng phiếu":224,"Hoàn toàn đồng ý":2857,"Đồng ý":5231,"Phân vân":1355,"Không đồng ý":172,"Hoàn toàn không đồng ý":99,"Tổng số":9714},
+            {"Khoa":"Quản trị dịch vụ du lịch và lữ hành","Số lượng phiếu":61,"Hoàn toàn đồng ý":1022,"Đồng ý":1959,"Phân vân":194,"Không đồng ý":89,"Hoàn toàn không đồng ý":5,"Tổng số":3269},
+            {"Khoa":"Quản trị khách sạn","Số lượng phiếu":148,"Hoàn toàn đồng ý":3043,"Đồng ý":3044,"Phân vân":328,"Không đồng ý":25,"Hoàn toàn không đồng ý":28,"Tổng số":6468},
+            {"Khoa":"Quản trị lữ hành","Số lượng phiếu":118,"Hoàn toàn đồng ý":2930,"Đồng ý":1967,"Phân vân":219,"Không đồng ý":22,"Hoàn toàn không đồng ý":8,"Tổng số":5146},
+            {"Khoa":"Quản trị kinh doanh tổng hợp","Số lượng phiếu":346,"Hoàn toàn đồng ý":6082,"Đồng ý":7093,"Phân vân":1526,"Không đồng ý":223,"Hoàn toàn không đồng ý":162,"Tổng số":15086},
+            {"Khoa":"Quản trị kinh doanh QT","Số lượng phiếu":12,"Hoàn toàn đồng ý":160,"Đồng ý":283,"Phân vân":42,"Không đồng ý":13,"Hoàn toàn không đồng ý":26,"Tổng số":524},
+            {"Khoa":"Quản trị nhân lực","Số lượng phiếu":66,"Hoàn toàn đồng ý":972,"Đồng ý":1606,"Phân vân":247,"Không đồng ý":28,"Hoàn toàn không đồng ý":11,"Tổng số":2864},
+            {"Khoa":"Ngôn ngữ Anh","Số lượng phiếu":218,"Hoàn toàn đồng ý":3045,"Đồng ý":5513,"Phân vân":796,"Không đồng ý":89,"Hoàn toàn không đồng ý":41,"Tổng số":9484},
+            {"Khoa":"Tiếng Anh sư phạm","Số lượng phiếu":34,"Hoàn toàn đồng ý":747,"Đồng ý":623,"Phân vân":111,"Không đồng ý":9,"Hoàn toàn không đồng ý":2,"Tổng số":1492},
+            {"Khoa":"Tiếng Anh doanh nghiệp","Số lượng phiếu":19,"Hoàn toàn đồng ý":236,"Đồng ý":449,"Phân vân":135,"Không đồng ý":9,"Hoàn toàn không đồng ý":2,"Tổng số":831},
+            {"Khoa":"Tài chính ngân hàng","Số lượng phiếu":117,"Hoàn toàn đồng ý":1199,"Đồng ý":3156,"Phân vân":574,"Không đồng ý":149,"Hoàn toàn không đồng ý":29,"Tổng số":5107},
+            {"Khoa":"Công nghệ kỹ thuật điều khiển và tự động hóa","Số lượng phiếu":45,"Hoàn toàn đồng ý":961,"Đồng ý":803,"Phân vân":144,"Không đồng ý":14,"Hoàn toàn không đồng ý":48,"Tổng số":1970},
+            {"Khoa":"Thiết kế đồ họa","Số lượng phiếu":75,"Hoàn toàn đồng ý":1017,"Đồng ý":1857,"Phân vân":313,"Không đồng ý":46,"Hoàn toàn không đồng ý":1,"Tổng số":3234},
+            {"Khoa":"Tâm lý học","Số lượng phiếu":55,"Hoàn toàn đồng ý":643,"Đồng ý":1439,"Phân vân":272,"Không đồng ý":36,"Hoàn toàn không đồng ý":4,"Tổng số":2394},
+            {"Khoa":"Quản trị Thương mại điện tử","Số lượng phiếu":229,"Hoàn toàn đồng ý":3686,"Đồng ý":5153,"Phân vân":954,"Không đồng ý":85,"Hoàn toàn không đồng ý":96,"Tổng số":9974},
+            {"Khoa":"Tiếng Trung Quốc-Thương mại du lịch","Số lượng phiếu":41,"Hoàn toàn đồng ý":456,"Đồng ý":1041,"Phân vân":226,"Không đồng ý":47,"Hoàn toàn không đồng ý":18,"Tổng số":1788},
+            {"Khoa":"Tiếng Trung biên - phiên dịch","Số lượng phiếu":88,"Hoàn toàn đồng ý":861,"Đồng ý":2420,"Phân vân":387,"Không đồng ý":47,"Hoàn toàn không đồng ý":90,"Tổng số":3805},
+            {"Khoa":"Truyền thông đa phương tiện","Số lượng phiếu":689,"Hoàn toàn đồng ý":10981,"Đồng ý":14644,"Phân vân":3428,"Không đồng ý":591,"Hoàn toàn không đồng ý":367,"Tổng số":30011},
+            {"Khoa":"XD dân dụng & công nghiệp","Số lượng phiếu":22,"Hoàn toàn đồng ý":170,"Đồng ý":221,"Phân vân":3,"Không đồng ý":0,"Hoàn toàn không đồng ý":0,"Tổng số":394},
+            {"Khoa":"Y Khoa","Số lượng phiếu":321,"Hoàn toàn đồng ý":5550,"Đồng ý":7255,"Phân vân":1001,"Không đồng ý":172,"Hoàn toàn không đồng ý":71,"Tổng số":14049}
+        ];
+
+        const app = document.getElementById('app');
+
+        const state = {
+            allCriteriaData: allCriteriaData,
+            allDepartmentData: allDepartmentData,
+            filters: {
+                criteria: JSON.parse(localStorage.getItem('filters.criteria')) || [],
+                department: JSON.parse(localStorage.getItem('filters.department')) || []
+            },
+            sort: { column: 'name', direction: 'asc' },
+            isDarkMode: localStorage.getItem('isDarkMode') === 'true',
+            currentView: localStorage.getItem('currentView') || 'chart',
+            chartType: localStorage.getItem('chartType') || 'bar',
+            isLoading: true,
+            isDepartmentView: localStorage.getItem('isDepartmentView') === 'true'
+        };
+
+        const CONSTANTS = {
+            RESPONSES: ["Hoàn toàn đồng ý", "Đồng ý", "Phân vân", "Không đồng ý", "Hoàn toàn không đồng ý"],
+            COLORS: {
+                responses: ['#22c55e', '#4ade80', '#facc15', '#f87171', '#ef4444'],
+                pie: ['#22c55e', '#4ade80', '#facc15', '#f87171', '#ef4444'],
+                line: {
+                    agree: 'rgba(34, 197, 94, 0.7)',
+                    neutral: 'rgba(252, 204, 21, 0.7)',
+                    dissatisfaction: 'rgba(248, 113, 113, 0.7)'
+                },
+                radar: ['#4f46e5', '#a855f7', '#06b6d4', '#ec4899', '#f97316']
+            }
+        };
+
+        let charts = { main: null };
+
+        // =========================================================================
+        // HÀM XỬ LÝ DỮ LIỆU
+        // =========================================================================
+
+        const calculateStats = (data) => {
+            if (!data || data.length === 0) {
+                return { total: 0, satisfied: 0, neutral: 0, dissatisfied: 0, satisfactionRate: 0, neutralRate: 0, dissatisfactionRate: 0 };
+            }
+            
+            const total = data.reduce((sum, item) => {
+                const totalItem = (item["Hoàn toàn đồng ý"] || 0) +
+                                  (item["Đồng ý"] || 0) +
+                                  (item["Phân vân"] || 0) +
+                                  (item["Không đồng ý"] || 0) +
+                                  (item["Hoàn toàn không đồng ý"] || 0);
+                return sum + totalItem;
+            }, 0);
+
+            const satisfied = data.reduce((sum, item) => sum + (item["Hoàn toàn đồng ý"] || 0) + (item["Đồng ý"] || 0), 0);
+            const neutral = data.reduce((sum, item) => sum + (item["Phân vân"] || 0), 0);
+            const dissatisfied = data.reduce((sum, item) => sum + (item["Không đồng ý"] || 0) + (item["Hoàn toàn không đồng ý"] || 0), 0);
+
+            return {
+                total,
+                satisfied,
+                neutral,
+                dissatisfied,
+                satisfactionRate: total > 0 ? (satisfied / total) * 100 : 0,
+                neutralRate: total > 0 ? (neutral / total) * 100 : 0,
+                dissatisfactionRate: total > 0 ? (dissatisfied / total) * 100 : 0
+            };
+        };
+
+        const getFilteredData = () => {
+            const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase();
+            const rawData = state.isDepartmentView ? state.allDepartmentData : state.allCriteriaData;
+            const filterKey = state.isDepartmentView ? 'department' : 'criteria';
+            const nameKey = state.isDepartmentView ? 'Khoa' : 'Tiêu chí';
+            
+            let filteredData = rawData;
+            if (state.filters[filterKey].length > 0) {
+                filteredData = rawData.filter((_, index) => state.filters[filterKey].includes(index));
+            }
+            
+            if (searchTerm) {
+                filteredData = filteredData.filter(item => item[nameKey].toLowerCase().includes(searchTerm));
+            }
+
+            return filteredData;
+        };
+
+        const getChartData = (data) => {
+            if (data.length === 0) return { labels: [], datasets: [] };
+
+            const isDepartmentData = !!data[0].Khoa;
+            const labels = isDepartmentData ? data.map(item => item['Khoa']) : data.map(item => item['Tiêu chí']);
+
+            if (state.chartType === 'pie') {
+                 const overallData = data.reduce((acc, item) => {
+                     CONSTANTS.RESPONSES.forEach(resp => {
+                         acc[resp] = (acc[resp] || 0) + (item[resp] || 0);
+                     });
+                     return acc;
+                 }, {});
+
+                const pieData = CONSTANTS.RESPONSES.map(resp => overallData[resp] || 0);
+
+                return {
+                    labels: CONSTANTS.RESPONSES,
+                    datasets: [{
+                        data: pieData,
+                        backgroundColor: CONSTANTS.COLORS.responses,
+                        borderColor: 'transparent',
+                    }]
+                };
+            }
+
+            if (state.chartType === 'radar') {
+                const datasets = [
+                    {
+                        label: 'Tỷ lệ Hài lòng',
+                        data: data.map(item => {
+                            const stats = calculateStats([item]);
+                            return stats.total > 0 ? ((item['Hoàn toàn đồng ý'] + item['Đồng ý']) / stats.total) * 100 : 0;
+                        }),
+                        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                        borderColor: '#22c55e',
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Tỷ lệ Phân vân',
+                        data: data.map(item => {
+                            const stats = calculateStats([item]);
+                            return stats.total > 0 ? (item['Phân vân'] / stats.total) * 100 : 0;
+                        }),
+                        backgroundColor: 'rgba(252, 204, 21, 0.2)',
+                        borderColor: '#facc15',
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Tỷ lệ Không hài lòng',
+                        data: data.map(item => {
+                            const stats = calculateStats([item]);
+                            return stats.total > 0 ? ((item['Không đồng ý'] + item['Hoàn toàn không đồng ý']) / stats.total) * 100 : 0;
+                        }),
+                        backgroundColor: 'rgba(248, 113, 113, 0.2)',
+                        borderColor: '#f87171',
+                        borderWidth: 2
+                    },
+                ].filter(dataset => !dataset.data.some(isNaN));
+
+                if (datasets.every(dataset => dataset.data.length === 0)) {
+                    state.chartType = 'bar';
+                    return getChartData(data);
+                }
+
+                return { labels, datasets };
+            }
+
+            if (state.chartType === 'line') {
+                 const datasets = [{
+                     label: 'Tỷ lệ Hài lòng',
+                     data: data.map(item => {
+                        const stats = calculateStats([item]);
+                        return stats.total > 0 ? ((item['Hoàn toàn đồng ý'] + item['Đồng ý']) / stats.total) * 100 : 0;
+                     }),
+                     borderColor: '#22c55e',
+                     backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                     fill: 'start',
+                     tension: 0.4
+                 }].filter(dataset => !dataset.data.some(isNaN));
+                 return { labels, datasets };
+            }
+
+            const datasets = CONSTANTS.RESPONSES.map((response, index) => ({
+                label: response,
+                data: data.map(item => item[response] || 0),
+                backgroundColor: CONSTANTS.COLORS.responses[index],
+                borderColor: CONSTANTS.COLORS.responses[index],
+                borderWidth: 1,
+            }));
+
+            return { labels, datasets };
+        };
+
+
+        // =========================================================================
+        // HÀM RENDER GIAO DIỆN
+        // =========================================================================
+
+        const render = () => {
+            const filteredData = getFilteredData();
+            const stats = calculateStats(getFilteredData());
+            const totalSurveys = state.allDepartmentData.reduce((sum, d) => sum + d["Số lượng phiếu"], 0);
+
+            const renderStatCard = (title, value, color, svgPath) => `
+                <div class="dashboard-card bg-${color}-600 text-white shadow-xl animate-slideInUp">
+                    <div class="flex items-center space-x-3">
+                        <svg class="w-10 h-10" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="${svgPath}" />
+                        </svg>
+                        <div>
+                            <h3 class="text-lg font-medium opacity-80">${title}</h3>
+                            <p class="text-4xl font-bold mt-1">${value}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const renderTags = (type) => {
+                const data = type === 'criteria' ? state.allCriteriaData : state.allDepartmentData;
+                const key = type === 'criteria' ? 'Tiêu chí' : 'Khoa';
+                return data.map((item, index) => {
+                    const isActive = state.filters[type].includes(index) ? 'active' : '';
+                    return `<div class="tag-filter ${isActive}" data-type="${type}" data-index="${index}">${item[key]}</div>`;
+                }).join('');
+            };
+
+            const renderViewButton = (view, label, svgPath) => {
+                const isActive = state.currentView === view;
+                const activeClass = 'bg-indigo-600 text-white';
+                const inactiveClass = 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+                return `<button id="view-${view}-btn" class="px-4 py-2 rounded-md transition-colors flex items-center gap-1 ${isActive ? activeClass : inactiveClass}">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="${svgPath}" />
+                            </svg>
+                            ${label}
+                        </button>`;
+            };
+
+            const renderDataTypeButton = (type, label) => {
+                const isActive = (type === 'criteria' && !state.isDepartmentView) || (type === 'department' && state.isDepartmentView);
+                const activeClass = 'bg-indigo-600 text-white';
+                const inactiveClass = 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+                return `<button class="px-4 py-2 rounded-md transition-colors ${isActive ? activeClass : inactiveClass}" data-type-toggle="${type}">
+                            ${label}
+                        </button>`;
+            };
+
+            const renderChartTypeButton = (type, label, svgPath) => {
+                const isActive = state.chartType === type;
+                const activeClass = 'bg-indigo-600 text-white';
+                const inactiveClass = 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+                return `<button id="chart-${type}-btn" class="chart-toggle-btn p-2 rounded-md transition-colors ${isActive ? activeClass : inactiveClass}">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="${svgPath}" />
+                            </svg>
+                            <span class="sr-only">${label}</span>
+                        </button>`;
+            };
+
+            const renderTable = (data, nameKey, sortColumn, sortDirection) => {
+                if (data.length === 0) {
+                    return `<p class="text-center text-gray-500 dark:text-gray-400 py-8">Không có dữ liệu phù hợp với bộ lọc.</p>`;
+                }
+
+                const sortedData = [...data].sort((a, b) => {
+                    const aValue = a[sortColumn] || 0;
+                    const bValue = b[sortColumn] || 0;
+                    if (sortDirection === 'asc') {
+                        return aValue > bValue ? 1 : -1;
+                    } else {
+                        return aValue < bValue ? 1 : -1;
+                    }
+                });
+
+                const renderSortIcon = (column) => {
+                    if (sortColumn === column) {
+                        return sortDirection === 'asc' ? '▲' : '▼';
+                    }
+                    return '';
+                };
+                
+                const getRowClass = (item) => {
+                    const stats = calculateStats([item]);
+                    const rate = stats.satisfactionRate;
+                    if (rate > 75) return 'bg-green-50 dark:bg-green-900/20';
+                    if (rate > 50) return 'bg-yellow-50 dark:bg-yellow-900/20';
+                    return 'bg-red-50 dark:bg-red-900/20';
+                };
+
+                return `
+                    <div class="overflow-x-auto rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-800">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        ${nameKey}
+                                    </th>
+                                    ${state.isDepartmentView ? `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Số lượng phiếu</th>` : ''}
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Hoàn toàn đồng ý
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Đồng ý
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Phân vân
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Không đồng ý
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Hoàn toàn không đồng ý
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
+                                ${sortedData.map(item => `
+                                    <tr class="${getRowClass(item)}">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">${item[nameKey]}</td>
+                                        ${state.isDepartmentView ? `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item['Số lượng phiếu'] || 0}</td>` : ''}
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item["Hoàn toàn đồng ý"] || 0}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item["Đồng ý"] || 0}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item["Phân vân"] || 0}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item["Không đồng ý"] || 0}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">${item["Hoàn toàn không đồng ý"] || 0}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            };
+
+            let content = '';
+
+            if (state.isLoading) {
+                content = `
+                    <div class="loading-spinner">
+                        <div class="border-t-transparent animate-spin"></div>
+                    </div>
+                `;
+            } else {
+                const mainTitle = state.isDepartmentView ? 'Phân tích mức độ hài lòng theo Khoa' : 'Phân tích mức độ hài lòng theo Tiêu chí';
+                const tagType = state.isDepartmentView ? 'department' : 'criteria';
+                const nameKey = state.isDepartmentView ? 'Khoa' : 'Tiêu chí';
+
+                content = `
+                    <div class="max-w-7xl mx-auto">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                            <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white">${mainTitle}</h1>
+                            <div class="flex items-center gap-2">
+                                ${renderDataTypeButton('criteria', 'Theo Tiêu chí')}
+                                ${renderDataTypeButton('department', 'Theo Khoa')}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 animate-fadeIn">
+                            ${renderStatCard(
+                                'Tổng số phiếu',
+                                totalSurveys.toLocaleString('vi-VN'),
+                                'blue',
+                                'M16.5 8.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v8.25A2.25 2.25 0 006 16.5h2.25m8.25-8.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-7.5A2.25 2.25 0 018.25 18v-1.5m8.25-8.25h-6a2.25 2.25 0 00-2.25 2.25v6m-4.5 0h13.5'
+                            )}
+                            ${renderStatCard(
+                                'Tổng phản hồi',
+                                stats.total.toLocaleString('vi-VN'),
+                                'purple',
+                                'M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5'
+                            )}
+                            ${renderStatCard(
+                                'Hài lòng',
+                                `${stats.satisfactionRate.toFixed(1)}%`,
+                                'green',
+                                'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                            )}
+                            ${renderStatCard(
+                                'Không hài lòng',
+                                `${stats.dissatisfactionRate.toFixed(1)}%`,
+                                'red',
+                                'M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                            )}
+                        </div>
+
+                        <div class="dashboard-card mb-8 animate-fadeIn">
+                            <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                                <div class="flex-grow w-full md:w-auto">
+                                    <input type="text" id="search-input" placeholder="Tìm kiếm..." class="w-full px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                                </div>
+                                <div class="flex items-center space-x-2 w-full md:w-auto">
+                                    <div id="view-toggle" class="inline-flex rounded-md shadow-sm" role="group">
+                                        ${renderViewButton('chart', 'Biểu đồ', 'M10.5 6a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM12 9v6m-3-3h6')}
+                                        ${renderViewButton('table', 'Bảng', 'M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5')}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-6">
+                                <div class="flex flex-wrap items-center gap-2 mb-4">
+                                    <span class="text-sm font-semibold whitespace-nowrap">Bộ lọc:</span>
+                                    <div class="flex flex-wrap gap-2 overflow-x-auto py-2 flex-grow scroll-smooth" id="tags-container">
+                                        ${renderTags(tagType)}
+                                    </div>
+                                    <button id="clear-filters-btn" class="px-3 py-1 text-sm rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                                        Xóa lọc
+                                    </button>
+                                </div>
+                                <div id="chart-options" class="flex flex-wrap items-center gap-2">
+                                    <span class="text-sm font-semibold whitespace-nowrap">Kiểu biểu đồ:</span>
+                                    ${renderChartTypeButton('bar', 'Bar', 'M3 13.5a1.5 1.5 0 013 0v5.25a1.5 1.5 0 01-3 0v-5.25zM12.75 6a1.5 1.5 0 013 0v12a1.5 1.5 0 01-3 0V6zM18.75 9a1.5 1.5 0 013 0v9a1.5 1.5 0 01-3 0V9zM6.75 10.5a1.5 1.5 0 013 0v8.25a1.5 1.5 0 01-3 0v-8.25z')}
+                                    ${renderChartTypeButton('pie', 'Pie', 'M10.5 6a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM12 9v6m-3-3h6')}
+                                    ${renderChartTypeButton('line', 'Line', 'M3.75 10.5L12 3m0 0l8.25 7.5M12 3v18')}
+                                    ${renderChartTypeButton('radar', 'Radar', 'M12 4.5v15M15.75 7.5l-4.5 15M20.25 10.5l-9-15M12 4.5l-9 15M8.25 7.5l4.5 15')}
+                                    <button id="download-excel-btn" class="px-4 py-2 text-sm rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors flex items-center gap-1">
+                                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                        </svg>
+                                        Tải Excel
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div id="main-content-display">
+                                ${state.currentView === 'chart' ? '<canvas id="mainChart" class="w-full h-96"></canvas>' : renderTable(filteredData, nameKey, state.sort.column, state.sort.direction)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            app.innerHTML = content;
+            if (!state.isLoading) {
+                setupEventListeners();
+                if (state.currentView === 'chart') {
+                    renderChart();
+                }
+            }
+        };
+
+        const renderChart = () => {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            const filteredData = getFilteredData();
+            const chartData = getChartData(filteredData);
+            
+            if (charts.main) {
+                charts.main.destroy();
+            }
+
+            const chartConfig = {
+                type: state.chartType === 'line' || state.chartType === 'radar' ? state.chartType : 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 800,
+                        easing: 'easeOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: state.isDarkMode ? '#e5e7eb' : '#1a202c'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: state.isDepartmentView ? 'Biểu đồ phân tích theo Khoa' : 'Biểu đồ phân tích theo Tiêu chí',
+                            color: state.isDarkMode ? '#e5e7eb' : '#1a202c',
+                            font: {
+                                size: 18,
+                                weight: 'bold'
+                            }
+                        },
+                        datalabels: {
+                            display: state.chartType === 'pie',
+                            color: '#fff',
+                            font: {
+                                weight: 'bold',
+                                size: 14
+                            },
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((sum, current) => sum + current, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                                return percentage;
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: state.chartType !== 'pie' && state.chartType !== 'radar',
+                            ticks: { color: state.isDarkMode ? '#9ca3af' : '#6b7280' },
+                            grid: { color: state.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                        },
+                        y: {
+                            display: state.chartType !== 'pie' && state.chartType !== 'radar',
+                            ticks: { color: state.isDarkMode ? '#9ca3af' : '#6b7280', beginAtZero: true },
+                            grid: { color: state.isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            };
+
+            if (state.chartType === 'radar' || state.chartType === 'line') {
+                chartConfig.options.scales.x.display = false;
+                chartConfig.options.scales.y.display = false;
+                chartConfig.options.plugins.datalabels.display = false;
+                
+                if(state.chartType === 'radar'){
+                    chartConfig.options.scales = {
+                        r: {
+                            angleLines: {
+                                color: state.isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'
+                            },
+                            grid: {
+                                color: state.isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'
+                            },
+                            pointLabels: {
+                                color: state.isDarkMode ? '#e5e7eb' : '#1a202c'
+                            },
+                            ticks: {
+                                color: state.isDarkMode ? '#9ca3af' : '#6b7280',
+                                backdropColor: state.isDarkMode ? '#1f2937' : '#ffffff'
+                            }
+                        }
+                    };
+                }
+            }
+
+            charts.main = new Chart(ctx, chartConfig);
+        };
+
+        const setupEventListeners = () => {
+            document.getElementById('view-toggle').addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if (target) {
+                    state.currentView = target.id.split('-')[1];
+                    localStorage.setItem('currentView', state.currentView);
+                    render();
+                }
+            });
+
+            document.getElementById('chart-options')?.addEventListener('click', (e) => {
+                const target = e.target.closest('.chart-toggle-btn');
+                if (target) {
+                    state.chartType = target.id.split('-')[1];
+                    localStorage.setItem('chartType', state.chartType);
+                    render();
+                }
+            });
+
+            document.querySelector('[data-type-toggle="criteria"]').addEventListener('click', () => {
+                state.isDepartmentView = false;
+                state.filters.department = [];
+                localStorage.setItem('isDepartmentView', state.isDepartmentView);
+                localStorage.setItem('filters.department', JSON.stringify([]));
+                render();
+            });
+
+            document.querySelector('[data-type-toggle="department"]').addEventListener('click', () => {
+                state.isDepartmentView = true;
+                state.filters.criteria = [];
+                localStorage.setItem('isDepartmentView', state.isDepartmentView);
+                localStorage.setItem('filters.criteria', JSON.stringify([]));
+                render();
+            });
+
+            document.getElementById('tags-container').addEventListener('click', (e) => {
+                const tag = e.target.closest('.tag-filter');
+                if (tag) {
+                    const index = parseInt(tag.dataset.index);
+                    const type = tag.dataset.type;
+                    const filters = state.filters[type];
+                    const filterIndex = filters.indexOf(index);
+                    if (filterIndex > -1) {
+                        filters.splice(filterIndex, 1);
+                    } else {
+                        filters.push(index);
+                    }
+                    localStorage.setItem(`filters.${type}`, JSON.stringify(filters));
+                    render();
+                }
+            });
+
+            document.getElementById('clear-filters-btn').addEventListener('click', () => {
+                const type = state.isDepartmentView ? 'department' : 'criteria';
+                state.filters[type] = [];
+                localStorage.setItem(`filters.${type}`, JSON.stringify([]));
+                render();
+            });
+            
+            document.getElementById('search-input').addEventListener('input', () => {
+                render();
+            });
+
+            document.querySelectorAll('.table-sort-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    const column = e.currentTarget.dataset.sort;
+                    if (state.sort.column === column) {
+                        state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        state.sort.column = column;
+                        state.sort.direction = 'asc';
+                    }
+                    render();
+                });
+            });
+
+            document.getElementById('download-excel-btn').addEventListener('click', () => {
+                exportToExcel();
+            });
+        };
+
+        const exportToExcel = () => {
+            const data = getFilteredData();
+            const sheetName = state.isDepartmentView ? 'Phân tích theo Khoa' : 'Phân tích theo Tiêu chí';
+            const nameKey = state.isDepartmentView ? 'Khoa' : 'Tiêu chí';
+
+            const exportData = data.map(item => {
+                const stats = calculateStats([item]);
+                return {
+                    [nameKey]: item[nameKey],
+                    "Hoàn toàn đồng ý": item["Hoàn toàn đồng ý"],
+                    "Đồng ý": item["Đồng ý"],
+                    "Phân vân": item["Phân vân"],
+                    "Không đồng ý": item["Không đồng ý"],
+                    "Hoàn toàn không đồng ý": item["Hoàn toàn không đồng ý"],
+                    "Tổng số phản hồi": stats.total,
+                    "Tỷ lệ hài lòng (%)": stats.satisfactionRate.toFixed(2),
+                    "Tỷ lệ không hài lòng (%)": stats.dissatisfactionRate.toFixed(2)
+                };
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            XLSX.writeFile(wb, `${sheetName}.xlsx`);
+
+            showToast("Đã tải xuống file Excel!");
+        };
+
+        const showToast = (message) => {
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('hide');
+                toast.addEventListener('animationend', () => {
+                    toast.remove();
+                });
+            }, 3000);
+        };
+
+        const toggleDarkMode = () => {
+            state.isDarkMode = !state.isDarkMode;
+            localStorage.setItem('isDarkMode', state.isDarkMode);
+            document.documentElement.classList.toggle('dark', state.isDarkMode);
+            render();
+        };
+
+        const setupInitialState = () => {
+            if (state.isDarkMode) {
+                document.documentElement.classList.add('dark');
+            }
+            setTimeout(() => {
+                state.isLoading = false;
+                render();
+            }, 1000);
+        };
+
+        setupInitialState();
+        
+        document.addEventListener('DOMContentLoaded', () => {
+             const darkModeToggleBtn = document.createElement('div');
+             darkModeToggleBtn.className = 'dark-mode-toggle';
+             darkModeToggleBtn.innerHTML = `
+                <svg class="w-6 h-6 text-white dark:hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0112 17.25c-5.385 0-9.75-4.365-9.75-9.75S6.615 2.25 12 2.25c2.636 0 5.074 1.076 6.899 2.899A9.722 9.722 0 0021.752 15.002z" />
+                </svg>
+                <svg class="w-6 h-6 text-white hidden dark:block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.364-.386l1.591-1.591M3 12H5.25m-.386-6.364l1.591 1.591M12 12a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z" />
+                </svg>
+             `;
+             darkModeToggleBtn.addEventListener('click', toggleDarkMode);
+             document.body.appendChild(darkModeToggleBtn);
+        });
+
+    </script>
+</body>
+</html>
